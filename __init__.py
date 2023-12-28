@@ -371,7 +371,8 @@ def select_plant(filepath, defaults=False):
     old_qual = tp.qualifier
 
     if defaults:
-        for key in tp.keys():
+        keys = list(tp.keys())
+        for key in keys:
             tp.pop(key)
 
     tp.name = plant.name
