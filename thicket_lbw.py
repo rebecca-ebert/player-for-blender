@@ -429,16 +429,16 @@ def lbw_to_bl_mat(plant, mat_id, mat_name, qualifier=None, proxy_color=None):
     return mat
 
 
-def import_lbw(filepath, model, viewport_lod, render_lod, mesh_args, obj_viewport=None, obj_render=None):
+def import_lbw(filepath, variant, viewport_lod, render_lod, mesh_args, obj_viewport=None, obj_render=None):
     time_main = time.time()
     lbw_plant = laubwerk.load(filepath)
     # TODO: This should be debug, but we cannot silence the SDK [debug] message
     # which appear without context without this appearing in the log first
     logger.info('Importing "%s"' % lbw_plant.name)
-    lbw_model = next((m for m in lbw_plant.models if m.name == model), lbw_plant.default_model)
-    if not lbw_model.name == model:
-        logger.warning("Model '%s' not found for '%s', using default model '%s'" %
-                       (model, lbw_plant.name, lbw_model.name))
+    lbw_variant = next((v for v in lbw_plant.variants if v.name == variant), lbw_plant.default_variant)
+    if not lbw_variant.name == variant:
+        logger.warning("Variant '%s' not found for '%s', using default variant '%s'" %
+                       (variant, lbw_plant.name, lbw_variant.name))
 
     # Create the viewport object (low detail)
     time_local = time.time()
@@ -448,7 +448,7 @@ def import_lbw(filepath, model, viewport_lod, render_lod, mesh_args, obj_viewpor
             obj_viewport.data.name = lbw_plant.name
             logger.debug("Reusing existing viewport object")
         elif viewport_lod == 'PROXY':
-            lbw_mesh = lbw_model.get_proxy()
+            lbw_mesh = lbw_variant.get_proxy()
             obj_viewport = lbw_to_bl_obj(lbw_plant, None, lbw_mesh, mesh_args["qualifier"], True)
             logger.debug("Generated proxy viewport object in %.4fs" % (time.time() - time_local))
         elif viewport_lod == 'LOW':
@@ -463,7 +463,7 @@ def import_lbw(filepath, model, viewport_lod, render_lod, mesh_args, obj_viewpor
             vp_mesh_args["leaf_density"] = 0.5 * mesh_args["leaf_density"]
             vp_mesh_args["max_subdiv_level"] = 0
             logger.debug("viewport get_mesh(%s)" % str(vp_mesh_args))
-            lbw_mesh = lbw_model.get_mesh(**vp_mesh_args)
+            lbw_mesh = lbw_variant.get_mesh(**vp_mesh_args)
             obj_viewport = lbw_to_bl_obj(lbw_plant, None, lbw_mesh, mesh_args["qualifier"], False)
             logger.debug("Generated low resolution viewport object in %.4fs" % (time.time() - time_local))
         else:
@@ -476,12 +476,12 @@ def import_lbw(filepath, model, viewport_lod, render_lod, mesh_args, obj_viewpor
         obj_render.data.name = lbw_plant.name + " (render)"
         logger.debug("Reusing existing render object")
     elif render_lod == 'PROXY':
-        lbw_mesh = lbw_model.get_proxy()
+        lbw_mesh = lbw_variant.get_proxy()
         obj_render = lbw_to_bl_obj(lbw_plant, " (render)", lbw_mesh, mesh_args["qualifier"], True)
         logger.debug("Generated proxy render object in %.4fs" % (time.time() - time_local))
     elif render_lod == 'FULL':
         logger.debug("render get_mesh(%s)" % str(mesh_args))
-        lbw_mesh = lbw_model.get_mesh(**mesh_args)
+        lbw_mesh = lbw_variant.get_mesh(**mesh_args)
         obj_render = lbw_to_bl_obj(lbw_plant, " (render)", lbw_mesh, mesh_args["qualifier"], False)
         logger.debug("Generated high resolution render object in %.4fs" % (time.time() - time_local))
     else:
