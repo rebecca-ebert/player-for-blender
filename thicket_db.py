@@ -118,11 +118,11 @@ class ThicketDBOldSchemaError(Exception):
 
 class ThicketDB:
     """ Thicket Database Interface """
-    def __init__(self, db_filename, locale="en-US", python=sys.executable, create=False):
+    def __init__(self, db_filename, locales, python=sys.executable, create=False):
         global SCHEMA_VERSION
         self._db_filename = db_filename
-        self.locale = locale.replace("_", "-")
         self.python = python
+        self.locales = locales
         try:
             with open(db_filename, "r", encoding="utf-8") as f:
                 self._db = json.load(f)
@@ -169,17 +169,20 @@ class ThicketDB:
     def update_labels(self, labels):
         self._db["labels"].update(labels)
 
-    def get_label(self, key, locale=None):
-        if locale:
-            locale = locale.replace("_", "-")
-        else:
-            locale = self.locale
+    def get_translation_dict(self):
+        translations_dict = {}
+        for key, value in self._db["labels"].items():
+            for lang, trans in value.items():
+                if trans:
+                    translations_dict.setdefault(lang, {})[('*', self.get_label(key))] = trans
 
+        return translations_dict
+
+    def get_label(self, key, defaultLocale='en_US'):
         try:
-            if locale in self._db["labels"][key]:
-                return self._db["labels"][key][locale]
-            elif locale[:2] in self._db["labels"][key]:
-                return self._db["labels"][key][locale[:2]]
+            if defaultLocale in self._db["labels"][key]:
+                return self._db["labels"][key][defaultLocale]
+
             return key
         except KeyError:
             return key
@@ -200,7 +203,7 @@ class ThicketDB:
         return None
 
     def add_model(self, filepath):
-        m_rec = ThicketDB.parse_model(filepath)
+        m_rec = ThicketDB.parse_model(filepath, self.locales)
         self._db["models"][m_rec["name"]] = m_rec["model"]
         self.update_labels(m_rec["labels"])
 
@@ -226,7 +229,7 @@ class ThicketDB:
             while len(jobs) < num_jobs and len(model_files) > 0:
                 f = model_files.pop()
                 logger.debug("Parsing: %s" % f)
-                job = Popen([self.python, __file__, "-f", f, "-s", sdk_path, "-l", log_level, "parse_model"],
+                job = Popen([self.python, __file__, "-f", f, "-s", sdk_path, "-l", log_level, "-t", ','.join(self.locales), "parse_model"],
                             stdout=PIPE)
                 jobs.append(job)
 
@@ -265,7 +268,7 @@ class ThicketDB:
                                           [s.name for s in v.seasons]))
 
     # Class methods
-    def parse_model(filepath):
+    def parse_model(filepath, locales):
         m = lbw.load(filepath)
         m_rec = {}
 
@@ -287,11 +290,7 @@ class ThicketDB:
         model["preview"] = str(preview_path)
 
         labels = {}
-        m_labels = {}
-        # Store only the first label per locale
-        for label in m.plant_meta['labels']:
-            if not label['lang'] in m_labels:
-                m_labels[label['lang']] = label['text']
+        m_labels = ThicketDB.retrieve_labels(m.plant_meta['labels'], locales)
 
         labels[m.name] = m_labels
 
@@ -302,9 +301,7 @@ class ThicketDB:
         params_season = next(x for x in m.params if x['name'] == "season")['enum']
         for s in params_season['options']:
             seasons.append(s['name'])
-            s_labels[s['name']] = {}
-            for s_lang in s['labels']:
-                s_labels[s['name']][s_lang['lang']] = s_lang['text']
+            s_labels[s['name']] = ThicketDB.retrieve_labels(s['labels'], locales)
         default_season = params_season['default']
 
         for v in m.variants:
@@ -319,11 +316,8 @@ class ThicketDB:
                 preview_path = ""
             v_rec["preview"] = str(preview_path)
             variants[v.name] = v_rec
-            v_labels = {}
 
-            for label in next(x for x in params_variant['options'] if x['name'] == v.name)['labels']:
-                v_labels[label['lang']] = label['text']
-            labels[v.name] = v_labels
+            labels[v.name] = ThicketDB.retrieve_labels(next(x for x in params_variant['options'] if x['name'] == v.name)['labels'], locales)
 
             i = i + 1
         model["variants"] = variants
@@ -332,9 +326,27 @@ class ThicketDB:
         m_rec["labels"] = labels
         return m_rec
 
-    def parse_model_json(filepath):
-        m_rec = ThicketDB.parse_model(filepath)
+    def parse_model_json(filepath, locales):
+        m_rec = ThicketDB.parse_model(filepath, locales)
         print(json.dumps(m_rec))
+
+    def retrieve_labels(labels, locales):
+        result = {}
+
+        # Store only the first label per locale
+        for lang in locales:
+            lbw_lang = lang
+            if lbw_lang == "zh_HANS":  # Workaround: thicket and blender are using different strings here
+                lbw_lang = "zh_CN"
+
+            lbw_lang = lbw_lang.replace("_", "-")
+
+            try:
+                result[lang] = lbw.get_lang_string(labels, lbw_lang)
+            except ValueError:
+                logger.warning("Unable to fetch language string for language %s" % lbw_lang)
+
+        return result
 
 
 def main():
@@ -345,7 +357,7 @@ Thicket Database Tool
 Commands:
   read                read and print the db contents (requires -d)
   build               scan models path and add all models to a new db (requires -d -p -s)
-  parse_model         read a model file and print the model record json (requires -f -s)
+  parse_model         read a model file and print the model record json (requires -f -s -t)
 '''))
 
     argParse.add_argument("cmd", choices=["read", "build", "parse_model"])
@@ -355,6 +367,7 @@ Commands:
                           default="INFO", help="logger level")
     argParse.add_argument("-p", help="Laubwerk Models path")
     argParse.add_argument("-s", help="Laubwerk Python SDK path")
+    argParse.add_argument("-t", help="Translations to fetch in form 'te-TE,te-TE,te-TE", type=lambda s: [item for item in s.split(',')])
 
     args = argParse.parse_args()
 
@@ -379,7 +392,7 @@ Commands:
         db = ThicketDB(args.d, create=True)
         db.build(args.p, args.s)
     elif cmd == "parse_model" and args.f and lbw:
-        ThicketDB.parse_model_json(args.f)
+        ThicketDB.parse_model_json(args.f, args.t)
     else:
         argParse.print_help()
         return 1

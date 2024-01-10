@@ -46,7 +46,7 @@ from bpy.props import (BoolProperty,
                        PointerProperty,
                        StringProperty,
                        )
-from bpy.app.translations import locale
+from bpy.app.translations import locales, locale_explode
 import bpy.utils.previews
 
 
@@ -197,6 +197,9 @@ def thicket_init():
 
     global thicket_status, db, ThicketDB, thicket_lbw, laubwerk, logger
 
+    if db is not None:
+        bpy.app.translations.unregister(__name__)
+
     thicket_status = ThicketStatus()
     db = None
 
@@ -245,9 +248,19 @@ def thicket_init():
     thicket_status.imported = True
     logger.info(laubwerk.version)
 
+    # capture all available languages and process them to the form "language_country"
+    availableLocales = []
+    for locale in locales:
+        explodedLocale = locale_explode(locale)
+        localeString = explodedLocale[3]
+        if not localeString:
+            localeString = explodedLocale[0]
+
+        availableLocales.append(localeString)
+
     db_path = Path(bpy.utils.user_resource('SCRIPTS', path="addons", create=True)) / __name__ / "thicket.db"
     try:
-        db = ThicketDB(db_path, locale, sys.executable)
+        db = ThicketDB(db_path, availableLocales, sys.executable)
     except ThicketDBOldSchemaError:
         logger.warning("Old database schema found, creating empty database")
         db_path.unlink()
@@ -257,8 +270,10 @@ def thicket_init():
     if db is None or db.model_count() == 0:
         db_dir = Path(PurePath(db_path).parent)
         db_dir.mkdir(parents=True, exist_ok=True)
-        db = ThicketDB(db_path, locale, sys.executable, True)
+        db = ThicketDB(db_path, availableLocales, sys.executable, True)
         return
+
+    bpy.app.translations.register(__name__, db.get_translation_dict())
 
     populate_previews()
 
@@ -1275,6 +1290,8 @@ def unregister():
         bpy.utils.previews.remove(thicket_previews)
     for c in reversed(__classes__):
         bpy.utils.unregister_class(c)
+
+    bpy.app.translations.unregister(__name__)
 
 
 if __name__ == "__main__":
