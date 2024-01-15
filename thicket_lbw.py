@@ -47,7 +47,7 @@ def new_collection(name, parent, singleton=False, exclude=False):
     return col
 
 
-def lbw_to_bl_obj(lbw_plant, suffix, lbw_mesh, qualifier, proxy):
+def lbw_to_bl_obj(lbw_plant, suffix, lbw_mesh, season, proxy):
     """ Generate the Blender Object from the Laubwerk mesh and materials """
 
     # construct object name
@@ -113,9 +113,9 @@ def lbw_to_bl_obj(lbw_plant, suffix, lbw_mesh, qualifier, proxy):
             mat = bpy.data.materials.get(mat_name)
             if mat is None:
                 if use_1033:
-                    mat = lbw_to_bl_mat_1033(lbw_plant, mat_id, mat_name, qualifier, proxy_color)
+                    mat = lbw_to_bl_mat_1033(lbw_plant, mat_id, mat_name, season, proxy_color)
                 else:
-                    mat = lbw_to_bl_mat(lbw_plant, mat_id, mat_name, qualifier, proxy_color)
+                    mat = lbw_to_bl_mat(lbw_plant, mat_id, mat_name, season, proxy_color)
             obj.data.materials.append(mat)
 
         mat_index = obj.data.materials.find(mat_name)
@@ -129,7 +129,7 @@ def lbw_to_bl_obj(lbw_plant, suffix, lbw_mesh, qualifier, proxy):
     return obj
 
 
-def lbw_to_bl_mat_1033(plant, mat_id, mat_name, qualifier=None, proxy_color=None):
+def lbw_to_bl_mat_1033(plant, mat_id, mat_name, season=None, proxy_color=None):
     logger.warning("Laubwerk 1.0.33 support is deprecated and will be removed "
                    "in future releases. Please upgrade to 1.0.34 or newer.")
 
@@ -301,7 +301,7 @@ def lbw_side_to_bsdf(mat, side, x=0, y=0):
     return node_bsdf
 
 
-def lbw_to_bl_mat(plant, mat_id, mat_name, qualifier=None, proxy_color=None):
+def lbw_to_bl_mat(plant, mat_id, mat_name, season=None, proxy_color=None):
     global NW, NH
 
     lbw_mat = plant.materials[mat_id]
@@ -449,7 +449,7 @@ def import_lbw(filepath, variant, viewport_lod, render_lod, mesh_args, obj_viewp
             logger.debug("Reusing existing viewport object")
         elif viewport_lod == 'PROXY':
             lbw_mesh = lbw_variant.get_proxy()
-            obj_viewport = lbw_to_bl_obj(lbw_plant, None, lbw_mesh, mesh_args["qualifier"], True)
+            obj_viewport = lbw_to_bl_obj(lbw_plant, None, lbw_mesh, mesh_args["season"], True)
             logger.debug("Generated proxy viewport object in %.4fs" % (time.time() - time_local))
         elif viewport_lod == 'LOW':
             vp_mesh_args = mesh_args.copy()
@@ -464,7 +464,7 @@ def import_lbw(filepath, variant, viewport_lod, render_lod, mesh_args, obj_viewp
             vp_mesh_args["max_subdiv_level"] = 0
             logger.debug("viewport get_mesh(%s)" % str(vp_mesh_args))
             lbw_mesh = lbw_variant.get_mesh(**vp_mesh_args)
-            obj_viewport = lbw_to_bl_obj(lbw_plant, None, lbw_mesh, mesh_args["qualifier"], False)
+            obj_viewport = lbw_to_bl_obj(lbw_plant, None, lbw_mesh, mesh_args["season"], False)
             logger.debug("Generated low resolution viewport object in %.4fs" % (time.time() - time_local))
         else:
             logger.warning("Unknown viewport_lod: %s" % viewport_lod)
@@ -477,12 +477,12 @@ def import_lbw(filepath, variant, viewport_lod, render_lod, mesh_args, obj_viewp
         logger.debug("Reusing existing render object")
     elif render_lod == 'PROXY':
         lbw_mesh = lbw_variant.get_proxy()
-        obj_render = lbw_to_bl_obj(lbw_plant, " (render)", lbw_mesh, mesh_args["qualifier"], True)
+        obj_render = lbw_to_bl_obj(lbw_plant, " (render)", lbw_mesh, mesh_args["season"], True)
         logger.debug("Generated proxy render object in %.4fs" % (time.time() - time_local))
     elif render_lod == 'FULL':
         logger.debug("render get_mesh(%s)" % str(mesh_args))
         lbw_mesh = lbw_variant.get_mesh(**mesh_args)
-        obj_render = lbw_to_bl_obj(lbw_plant, " (render)", lbw_mesh, mesh_args["qualifier"], False)
+        obj_render = lbw_to_bl_obj(lbw_plant, " (render)", lbw_mesh, mesh_args["season"], False)
         logger.debug("Generated high resolution render object in %.4fs" % (time.time() - time_local))
     else:
         logger.warning("Unknown render_lod: %s" % render_lod)

@@ -47,7 +47,7 @@ def md5sum(filename):
     return md5.hexdigest()
 
 
-class DBQualifier:
+class DBSeason:
     def __init__(self, db, name):
         self.name = name
         self.label = db.get_label(name)
@@ -57,19 +57,19 @@ class DBVariant:
     def __init__(self, db, name, v_rec, plant_preview):
         self.name = name
         self.label = db.get_label(self.name)
-        self.qualifiers = [DBQualifier(db, q) for q in v_rec["qualifiers"]]
-        self._default_qualifier = DBQualifier(db, v_rec["default_qualifier"])
+        self.seasons = [DBSeason(db, s) for s in v_rec["seasons"]]
+        self._default_season = DBSeason(db, v_rec["default_season"])
         self.preview = v_rec["preview"]
         if self.preview == "":
             self.preview = plant_preview
 
-    def get_qualifier(self, name=None):
-        """ Return the requested qualifier or the default qualifier if None or not found """
+    def get_season(self, name=None):
+        """ Return the requested season or the default season if None or not found """
         if name is not None:
-            for q in self.qualifiers:
-                if q.name == name:
-                    return q
-        return self._default_qualifier
+            for s in self.seasons:
+                if s.name == name:
+                    return s
+        return self._default_season
 
 
 class DBPlant:
@@ -261,8 +261,8 @@ class ThicketDB:
             print("\tdefault_variant: %s (%s)" % (v.name, v.label))
             print("\tvariants:")
             for v in plant.variants:
-                print("\t\t%s (%s) %s" % (v.name, v.get_qualifier().label,
-                                          [q.name for q in v.qualifiers]))
+                print("\t\t%s (%s) %s" % (v.name, v.get_season().label,
+                                          [s.name for s in v.seasons]))
 
     # Class methods
     def parse_plant(filepath):
@@ -293,20 +293,20 @@ class ThicketDB:
         variants = {}
         i = 0
         seasons = []
-        q_labels = {}
-        for q in p.params[0]['enum']['options']:
-            seasons.append(q['name'])
-            q_labels[q['name']] = {}
-            for q_lang in q['labels']:
-                q_labels[q['name']][q_lang['lang']] = q_lang['text']
+        s_labels = {}
+        for s in p.params[0]['enum']['options']:
+            seasons.append(s['name'])
+            s_labels[s['name']] = {}
+            for s_lang in s['labels']:
+                s_labels[s['name']][s_lang['lang']] = s_lang['text']
         default_season = p.params[0]['enum']['default']
 
         for v in p.variants:
             v_rec = {}
-            labels.update(q_labels)
+            labels.update(s_labels)
             v_rec["index"] = i
-            v_rec["qualifiers"] = seasons
-            v_rec["default_qualifier"] = seasons[default_season]
+            v_rec["seasons"] = seasons
+            v_rec["default_season"] = seasons[default_season]
             preview_path = Path(filepath).parent.absolute() / "models" / (preview_stem + "_" + v.name + ".png")
             if not preview_path.is_file():
                 logger.warning("Preview not found: %s" % preview_path)

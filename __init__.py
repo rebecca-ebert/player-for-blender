@@ -354,7 +354,7 @@ def select_plant(filepath, defaults=False):
         thicket_db filepath key to the desired plant
     defaults : Boolean
         Use the plant defaults (True) or keep the current selection for variant
-        and qualifier (or plant defaults if not set or unavailable)
+        and season (or plant defaults if not set or unavailable)
 
     Returns
     -------
@@ -366,9 +366,9 @@ def select_plant(filepath, defaults=False):
     tp = bpy.context.window_manager.thicket
     plant = db.get_plant(filepath=filepath)
 
-    # Store the old values and set the variant and qualifier to the 0 entry (should always exist)
+    # Store the old values and set the variant and season to the 0 entry (should always exist)
     old_variant = tp.variant
-    old_qual = tp.qualifier
+    old_season = tp.season
 
     if defaults:
         keys = list(tp.keys())
@@ -382,7 +382,7 @@ def select_plant(filepath, defaults=False):
     # Restore the old values if available, others reset to the defaults
     variant = plant.get_variant(old_variant)
     tp.variant = variant.name
-    tp.qualifier = variant.get_qualifier(old_qual).name
+    tp.season = variant.get_season(old_season).name
 
 
 ################################################################################
@@ -432,7 +432,7 @@ class ThicketPropGroup(PropertyGroup):
         tp = self
         variant = self.variant
         mesh_args = {}
-        mesh_args["qualifier"] = self.qualifier
+        mesh_args["season"] = self.season
 
         if original:
             orig_template = original.instance_collection
@@ -448,9 +448,9 @@ class ThicketPropGroup(PropertyGroup):
             variant = self.batch_variant
             if variant == 'UNCHANGED':
                 variant = orig_tp.variant
-            mesh_args["qualifier"] = self.batch_qualifier
-            if self.batch_qualifier == 'UNCHANGED':
-                mesh_args["qualifier"] = orig_tp.qualifier
+            mesh_args["season"] = self.batch_season
+            if self.batch_season == 'UNCHANGED':
+                mesh_args["season"] = orig_tp.season
 
         mesh_args["leaf_density"] = tp.leaf_density / 100.0
         if tp.use_lod_max_level:
@@ -467,7 +467,7 @@ class ThicketPropGroup(PropertyGroup):
         # be reused to save regenerating those meshes.  Do not attempt to avoid
         # regenerating proxy objects as these are fast enough.
         if original and self.name == orig_tp.name and self.variant == orig_tp.variant and \
-           self.qualifier == orig_tp.qualifier:
+           self.season == orig_tp.season:
             if self.eq_lod(orig_tp):
                 if self.render_lod == orig_tp.render_lod:
                     render_obj = orig_template.objects[-1]
@@ -502,7 +502,7 @@ class ThicketPropGroup(PropertyGroup):
                 items.append((v.name, v.label, ""))
         return items
 
-    def qualifier_callback(self, context):
+    def season_callback(self, context):
         global db, thicket_ui_mode
 
         tp = context.window_manager.thicket
@@ -515,8 +515,8 @@ class ThicketPropGroup(PropertyGroup):
         if not plant:
             items.append(("default", "default", ""))
         else:
-            for q in plant.get_variant(tp.variant).qualifiers:
-                items.append((q.name, q.label, ""))
+            for s in plant.get_variant(tp.variant).seasons:
+                items.append((s.name, s.label, ""))
         return items
 
     def batch_variant_callback(self, context):
@@ -526,10 +526,10 @@ class ThicketPropGroup(PropertyGroup):
                     '03young', '03medium', '03adult']
         return [(v, db.get_label(v), "") for v in variants] + [('UNCHANGED', "--", "")]
 
-    def batch_qualifier_callback(self, context):
+    def batch_season_callback(self, context):
         global db
-        qualifiers = ['spring', 'summer', 'fall', 'winter']
-        return [(q, db.get_label(q), "") for q in qualifiers] + [('UNCHANGED', "--", "")]
+        seasons = ['spring', 'summer', 'fall', 'winter']
+        return [(s, db.get_label(s), "") for s in seasons] + [('UNCHANGED', "--", "")]
 
     def render_lod_update(self, context):
         if self.render_lod == 'PROXY':
@@ -538,7 +538,7 @@ class ThicketPropGroup(PropertyGroup):
     # name is provided by the PropertyGroup and used to store the unique Laubwerk Plant name
     magic: bpy.props.StringProperty()
     variant: EnumProperty(items=variant_callback, name="Variant")
-    qualifier: EnumProperty(items=qualifier_callback, name="Season")
+    season: EnumProperty(items=season_callback, name="Season")
     leaf_density: FloatProperty(name="Leaf Density", description="How full the foliage appears",
                                 default=100.0, min=0.01, max=100.0, subtype='PERCENTAGE')
     viewport_lod: EnumProperty(name="Viewport",
@@ -567,7 +567,7 @@ class ThicketPropGroup(PropertyGroup):
     batch_mode: BoolProperty(default=False)
     batch_name: StringProperty(default="")
     batch_variant: EnumProperty(name="Variant", items=batch_variant_callback)
-    batch_qualifier: EnumProperty(name="Season", items=batch_qualifier_callback)
+    batch_season: EnumProperty(name="Season", items=batch_season_callback)
     batch_use_lod: BoolProperty(name="Show Geometry Options",
                                 description="Show options affecting geometry for selected plants.",
                                 default=False)
@@ -802,7 +802,7 @@ class THICKET_OT_edit_plant(Operator):
         tp.batch_mode = self.batch_mode
         tp.batch_name = ""
         tp.batch_variant = 'UNCHANGED'
-        tp.batch_qualifier = 'UNCHANGED'
+        tp.batch_season = 'UNCHANGED'
 
         thicket_ui_mode = self.next_mode
         context.area.tag_redraw()
@@ -944,10 +944,10 @@ class THICKET_PT_plant_properties(Panel):
 
         if not batch:
             layout.prop(tp, "variant")
-            layout.prop(tp, "qualifier")
+            layout.prop(tp, "season")
         else:
             layout.prop(tp, "batch_variant")
-            layout.prop(tp, "batch_qualifier")
+            layout.prop(tp, "batch_season")
             layout.prop(tp, "batch_use_lod")
             if not tp.batch_use_lod:
                 return
