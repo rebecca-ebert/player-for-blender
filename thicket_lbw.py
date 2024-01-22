@@ -463,7 +463,9 @@ def import_lbw(filepath, variant, viewport_lod, render_lod, mesh_args, obj_viewp
             vp_mesh_args["leaf_density"] = 0.5 * mesh_args["leaf_density"]
             vp_mesh_args["max_subdiv_level"] = 0
             logger.debug("viewport get_mesh(%s)" % str(vp_mesh_args))
+            vp_mesh_args["qualifier"] = mesh_args["season"]  # FIXME: qualifier still used in Laubwerk API
             lbw_mesh = lbw_variant.get_mesh(**vp_mesh_args)
+            del vp_mesh_args["qualifier"]
             obj_viewport = lbw_to_bl_obj(lbw_plant, None, lbw_mesh, mesh_args["season"], False)
             logger.debug("Generated low resolution viewport object in %.4fs" % (time.time() - time_local))
         else:
@@ -481,7 +483,9 @@ def import_lbw(filepath, variant, viewport_lod, render_lod, mesh_args, obj_viewp
         logger.debug("Generated proxy render object in %.4fs" % (time.time() - time_local))
     elif render_lod == 'FULL':
         logger.debug("render get_mesh(%s)" % str(mesh_args))
+        mesh_args["qualifier"] = mesh_args["season"]  # FIXME: qualifier still used in Laubwerk API
         lbw_mesh = lbw_variant.get_mesh(**mesh_args)
+        del mesh_args["qualifier"]
         obj_render = lbw_to_bl_obj(lbw_plant, " (render)", lbw_mesh, mesh_args["season"], False)
         logger.debug("Generated high resolution render object in %.4fs" % (time.time() - time_local))
     else:
