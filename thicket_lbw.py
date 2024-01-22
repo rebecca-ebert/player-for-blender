@@ -47,11 +47,11 @@ def new_collection(name, parent, singleton=False, exclude=False):
     return col
 
 
-def lbw_to_bl_obj(lbw_plant, suffix, lbw_mesh, season, proxy):
+def lbw_to_bl_obj(lbw_model, suffix, lbw_mesh, season, proxy):
     """ Generate the Blender Object from the Laubwerk mesh and materials """
 
     # construct object name
-    name = lbw_plant.name
+    name = lbw_model.name
     if suffix:
         name += suffix
 
@@ -78,10 +78,10 @@ def lbw_to_bl_obj(lbw_plant, suffix, lbw_mesh, season, proxy):
     obj.data.transform(Matrix.Rotation(radians(90), 4, 'X') @ Matrix.Scale(.01, 4))
 
     # String operations are expensive, do them here outside the material loop
-    wood_mat_name = lbw_plant.name + " wood"
+    wood_mat_name = lbw_model.name + " wood"
     # FIXME: fetch proper preview colors somehow
     wood_color = (0.08423289656639099, 0.13307799398899078, 0.023182500153779984)
-    foliage_mat_name = lbw_plant.name + " foliage"
+    foliage_mat_name = lbw_model.name + " foliage"
     foliage_color = (0.08423289656639099, 0.13307799398899078, 0.023182500153779984)
 
     use_1033 = False
@@ -96,7 +96,7 @@ def lbw_to_bl_obj(lbw_plant, suffix, lbw_mesh, season, proxy):
     i = 0
     for matIdx in zip(lbw_mesh.mat_idxs):
         lbw_mat_idx = matIdx[0]
-        lbw_mat = lbw_plant.materials[lbw_mat_idx]
+        lbw_mat = lbw_model.materials[lbw_mat_idx]
         mat_name = lbw_mat.name
         proxy_color = None
 
@@ -113,9 +113,9 @@ def lbw_to_bl_obj(lbw_plant, suffix, lbw_mesh, season, proxy):
             mat = bpy.data.materials.get(mat_name)
             if mat is None:
                 if use_1033:
-                    mat = lbw_to_bl_mat_1033(lbw_plant, lbw_mat_idx, mat_name, season, proxy_color)
+                    mat = lbw_to_bl_mat_1033(lbw_model, lbw_mat_idx, mat_name, season, proxy_color)
                 else:
-                    mat = lbw_to_bl_mat(lbw_plant, lbw_mat_idx, mat_name, season, proxy_color)
+                    mat = lbw_to_bl_mat(lbw_model, lbw_mat_idx, mat_name, season, proxy_color)
             obj.data.materials.append(mat)
 
         mat_index = obj.data.materials.find(mat_name)
@@ -129,13 +129,13 @@ def lbw_to_bl_obj(lbw_plant, suffix, lbw_mesh, season, proxy):
     return obj
 
 
-def lbw_to_bl_mat_1033(plant, mat_idx, mat_name, season=None, proxy_color=None):
+def lbw_to_bl_mat_1033(model, mat_idx, mat_name, season=None, proxy_color=None):
     logger.warning("Laubwerk 1.0.33 support is deprecated and will be removed "
                    "in future releases. Please upgrade to 1.0.34 or newer.")
 
     global NW, NH
 
-    lbw_mat = plant.materials[mat_idx]
+    lbw_mat = model.materials[mat_idx]
     mat = bpy.data.materials.new(mat_name)
 
     mat.use_nodes = True
@@ -301,10 +301,10 @@ def lbw_side_to_bsdf(mat, side, x=0, y=0):
     return node_bsdf
 
 
-def lbw_to_bl_mat(plant, mat_idx, mat_name, season=None, proxy_color=None):
+def lbw_to_bl_mat(model, mat_idx, mat_name, season=None, proxy_color=None):
     global NW, NH
 
-    lbw_mat = plant.materials[mat_idx]
+    lbw_mat = model.materials[mat_idx]
     mat = bpy.data.materials.new(mat_name)
 
     if proxy_color:
@@ -431,25 +431,25 @@ def lbw_to_bl_mat(plant, mat_idx, mat_name, season=None, proxy_color=None):
 
 def import_lbw(filepath, variant, viewport_lod, render_lod, mesh_args, obj_viewport=None, obj_render=None):
     time_main = time.time()
-    lbw_plant = laubwerk.load(filepath)
+    lbw_model = laubwerk.load(filepath)
     # TODO: This should be debug, but we cannot silence the SDK [debug] message
     # which appear without context without this appearing in the log first
-    logger.info('Importing "%s"' % lbw_plant.name)
-    lbw_variant = next((v for v in lbw_plant.variants if v.name == variant), lbw_plant.default_variant)
+    logger.info('Importing "%s"' % lbw_model.name)
+    lbw_variant = next((v for v in lbw_model.variants if v.name == variant), lbw_model.default_variant)
     if not lbw_variant.name == variant:
         logger.warning("Variant '%s' not found for '%s', using default variant '%s'" %
-                       (variant, lbw_plant.name, lbw_variant.name))
+                       (variant, lbw_model.name, lbw_variant.name))
 
     # Create the viewport object (low detail)
     time_local = time.time()
     if viewport_lod != render_lod:
         if obj_viewport:
-            obj_viewport.name = lbw_plant.name
-            obj_viewport.data.name = lbw_plant.name
+            obj_viewport.name = lbw_model.name
+            obj_viewport.data.name = lbw_model.name
             logger.debug("Reusing existing viewport object")
         elif viewport_lod == 'PROXY':
             lbw_mesh = lbw_variant.get_proxy()
-            obj_viewport = lbw_to_bl_obj(lbw_plant, None, lbw_mesh, mesh_args["season"], True)
+            obj_viewport = lbw_to_bl_obj(lbw_model, None, lbw_mesh, mesh_args["season"], True)
             logger.debug("Generated proxy viewport object in %.4fs" % (time.time() - time_local))
         elif viewport_lod == 'LOW':
             vp_mesh_args = mesh_args.copy()
@@ -466,7 +466,7 @@ def import_lbw(filepath, variant, viewport_lod, render_lod, mesh_args, obj_viewp
             vp_mesh_args["qualifier"] = mesh_args["season"]  # FIXME: qualifier still used in Laubwerk API
             lbw_mesh = lbw_variant.get_mesh(**vp_mesh_args)
             del vp_mesh_args["qualifier"]
-            obj_viewport = lbw_to_bl_obj(lbw_plant, None, lbw_mesh, mesh_args["season"], False)
+            obj_viewport = lbw_to_bl_obj(lbw_model, None, lbw_mesh, mesh_args["season"], False)
             logger.debug("Generated low resolution viewport object in %.4fs" % (time.time() - time_local))
         else:
             logger.warning("Unknown viewport_lod: %s" % viewport_lod)
@@ -474,19 +474,19 @@ def import_lbw(filepath, variant, viewport_lod, render_lod, mesh_args, obj_viewp
     # Create the render object (high detail)
     time_local = time.time()
     if obj_render:
-        obj_render.name = lbw_plant.name + " (render)"
-        obj_render.data.name = lbw_plant.name + " (render)"
+        obj_render.name = lbw_model.name + " (render)"
+        obj_render.data.name = lbw_model.name + " (render)"
         logger.debug("Reusing existing render object")
     elif render_lod == 'PROXY':
         lbw_mesh = lbw_variant.get_proxy()
-        obj_render = lbw_to_bl_obj(lbw_plant, " (render)", lbw_mesh, mesh_args["season"], True)
+        obj_render = lbw_to_bl_obj(lbw_model, " (render)", lbw_mesh, mesh_args["season"], True)
         logger.debug("Generated proxy render object in %.4fs" % (time.time() - time_local))
     elif render_lod == 'FULL':
         logger.debug("render get_mesh(%s)" % str(mesh_args))
         mesh_args["qualifier"] = mesh_args["season"]  # FIXME: qualifier still used in Laubwerk API
         lbw_mesh = lbw_variant.get_mesh(**mesh_args)
         del mesh_args["qualifier"]
-        obj_render = lbw_to_bl_obj(lbw_plant, " (render)", lbw_mesh, mesh_args["season"], False)
+        obj_render = lbw_to_bl_obj(lbw_model, " (render)", lbw_mesh, mesh_args["season"], False)
         logger.debug("Generated high resolution render object in %.4fs" % (time.time() - time_local))
     else:
         logger.warning("Unknown render_lod: %s" % render_lod)
@@ -509,16 +509,16 @@ def import_lbw(filepath, variant, viewport_lod, render_lod, mesh_args, obj_viewp
 
     # Setup collection hierarchy
     thicket_col = new_collection("Thicket", bpy.context.scene.collection, singleton=True, exclude=True)
-    plant_col = new_collection(lbw_plant.name, thicket_col)
+    model_col = new_collection(lbw_model.name, thicket_col)
 
-    # Add objects to the plant collection
+    # Add objects to the model collection
     if obj_viewport:
-        plant_col.objects.link(obj_viewport)
-    plant_col.objects.link(obj_render)
+        model_col.objects.link(obj_viewport)
+    model_col.objects.link(obj_render)
 
-    # Create an instance of the plant collection in the active collection
-    obj_inst = bpy.data.objects.new(name=lbw_plant.name, object_data=None)
-    obj_inst.instance_collection = plant_col
+    # Create an instance of the model collection in the active collection
+    obj_inst = bpy.data.objects.new(name=lbw_model.name, object_data=None)
+    obj_inst.instance_collection = model_col
     obj_inst.instance_type = 'COLLECTION'
     obj_inst.show_name = True
 
@@ -530,5 +530,5 @@ def import_lbw(filepath, variant, viewport_lod, render_lod, mesh_args, obj_viewp
     obj_inst.select_set(True)
     bpy.context.view_layer.objects.active = obj_inst
 
-    logger.info('Imported "%s" in %.4fs' % (lbw_plant.name, time.time() - time_main))
+    logger.info('Imported "%s" in %.4fs' % (lbw_model.name, time.time() - time_main))
     return obj_inst
