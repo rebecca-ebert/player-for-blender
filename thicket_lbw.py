@@ -94,28 +94,28 @@ def lbw_to_bl_obj(lbw_plant, suffix, lbw_mesh, season, proxy):
     # read matids and materialnames and create and add materials to the laubwerktree
     materials = []
     i = 0
-    for matID in zip(lbw_mesh.mat_idxs):
-        mat_id = matID[0]
-        lbw_mat = lbw_plant.materials[mat_id]
+    for matIdx in zip(lbw_mesh.mat_idxs):
+        lbw_mat_idx = matIdx[0]
+        lbw_mat = lbw_plant.materials[lbw_mat_idx]
         mat_name = lbw_mat.name
         proxy_color = None
 
         if proxy:
-            if mat_id == -1:
+            if lbw_mat_idx == -1:
                 mat_name = foliage_mat_name
                 proxy_color = foliage_color
             else:
                 mat_name = wood_mat_name
                 proxy_color = wood_color
 
-        if mat_id not in materials:
-            materials.append(mat_id)
+        if lbw_mat_idx not in materials:
+            materials.append(lbw_mat_idx)
             mat = bpy.data.materials.get(mat_name)
             if mat is None:
                 if use_1033:
-                    mat = lbw_to_bl_mat_1033(lbw_plant, mat_id, mat_name, season, proxy_color)
+                    mat = lbw_to_bl_mat_1033(lbw_plant, lbw_mat_idx, mat_name, season, proxy_color)
                 else:
-                    mat = lbw_to_bl_mat(lbw_plant, mat_id, mat_name, season, proxy_color)
+                    mat = lbw_to_bl_mat(lbw_plant, lbw_mat_idx, mat_name, season, proxy_color)
             obj.data.materials.append(mat)
 
         mat_index = obj.data.materials.find(mat_name)
@@ -129,13 +129,13 @@ def lbw_to_bl_obj(lbw_plant, suffix, lbw_mesh, season, proxy):
     return obj
 
 
-def lbw_to_bl_mat_1033(plant, mat_id, mat_name, season=None, proxy_color=None):
+def lbw_to_bl_mat_1033(plant, mat_idx, mat_name, season=None, proxy_color=None):
     logger.warning("Laubwerk 1.0.33 support is deprecated and will be removed "
                    "in future releases. Please upgrade to 1.0.34 or newer.")
 
     global NW, NH
 
-    lbw_mat = plant.materials[mat_id]
+    lbw_mat = plant.materials[mat_idx]
     mat = bpy.data.materials.new(mat_name)
 
     mat.use_nodes = True
@@ -301,10 +301,10 @@ def lbw_side_to_bsdf(mat, side, x=0, y=0):
     return node_bsdf
 
 
-def lbw_to_bl_mat(plant, mat_id, mat_name, season=None, proxy_color=None):
+def lbw_to_bl_mat(plant, mat_idx, mat_name, season=None, proxy_color=None):
     global NW, NH
 
-    lbw_mat = plant.materials[mat_id]
+    lbw_mat = plant.materials[mat_idx]
     mat = bpy.data.materials.new(mat_name)
 
     if proxy_color:
