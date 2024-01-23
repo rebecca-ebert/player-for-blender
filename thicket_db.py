@@ -270,15 +270,20 @@ class ThicketDB:
         m_rec = {}
 
         model = {}
-        model["name"] = m.plant_meta["name"]
+        model["name"] = m.name
         model["filepath"] = filepath
         model["md5"] = md5sum(filepath)
-        model["default_variant"] = m.default_model.name
-        preview_stem = m.plant_meta["botanical_name"].replace(" ", "_").replace(".", "")
+        params_variant = next(x for x in m.params if x['name'] == "variant")['enum']
+        default_variant_idx = params_variant["default"]
+        model["default_variant"] = params_variant["options"][default_variant_idx]["name"]
+        preview_stem = Path(filepath).stem
         preview_path = Path(filepath).parent.absolute() / (preview_stem + ".png")
         if not preview_path.is_file():
-            logger.warning("Preview not found: %s" % preview_path)
-            preview_path = ""
+            preview_stem = os.path.splitext(preview_stem)[0]
+            preview_path = Path(filepath).parent.absolute() / (preview_stem + ".png")
+            if not preview_path.is_file():
+                logger.warning("Preview not found: %s" % preview_path)
+                preview_path = ""
         model["preview"] = str(preview_path)
 
         labels = {}
@@ -294,12 +299,13 @@ class ThicketDB:
         i = 0
         seasons = []
         s_labels = {}
-        for s in m.params[0]['enum']['options']:
+        params_season = next(x for x in m.params if x['name'] == "season")['enum']
+        for s in params_season['options']:
             seasons.append(s['name'])
             s_labels[s['name']] = {}
             for s_lang in s['labels']:
                 s_labels[s['name']][s_lang['lang']] = s_lang['text']
-        default_season = m.params[0]['enum']['default']
+        default_season = params_season['default']
 
         for v in m.variants:
             v_rec = {}
@@ -315,7 +321,7 @@ class ThicketDB:
             variants[v.name] = v_rec
             v_labels = {}
 
-            for label in next(x for x in m.params[1]['enum']['options'] if x['name'] == v.name)['labels']:
+            for label in next(x for x in params_variant['options'] if x['name'] == v.name)['labels']:
                 v_labels[label['lang']] = label['text']
             labels[v.name] = v_labels
 
