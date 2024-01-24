@@ -36,6 +36,10 @@ VP_MIN_THICKNESS = 0.1
 NW = 300
 NH = 300
 
+MATERIAL_QUALITY_LOW = 0
+MATERIAL_QUALITY_MEDIUM = 1
+MATERIAL_QUALITY_HIGH = 2
+
 
 def new_collection(name, parent, singleton=False, exclude=False):
     if singleton and name in bpy.data.collections:
@@ -47,13 +51,8 @@ def new_collection(name, parent, singleton=False, exclude=False):
     return col
 
 
-def lbw_to_bl_obj(lbw_model, suffix, lbw_mesh, season, proxy):
+def lbw_to_bl_obj(lbw_materials, name, lbw_mesh, material_quality):
     """ Generate the Blender Object from the Laubwerk mesh and materials """
-
-    # construct object name
-    name = lbw_model.name
-    if suffix:
-        name += suffix
 
     # create mesh and object
     mesh = bpy.data.meshes.new(name)
@@ -77,175 +76,29 @@ def lbw_to_bl_obj(lbw_model, suffix, lbw_mesh, season, proxy):
     # Scale Laubwerk centimeters units to Blender meters units
     obj.data.transform(Matrix.Rotation(radians(90), 4, 'X') @ Matrix.Scale(.01, 4))
 
-    # String operations are expensive, do them here outside the material loop
-    wood_mat_name = lbw_model.name + " wood"
-    # FIXME: fetch proper preview colors somehow
-    wood_color = (0.08423289656639099, 0.13307799398899078, 0.023182500153779984)
-    foliage_mat_name = lbw_model.name + " foliage"
-    foliage_color = (0.08423289656639099, 0.13307799398899078, 0.023182500153779984)
-
-    use_1033 = False
-    lbw_version = laubwerk.version_info
-    if lbw_version[0] <= 1:
-        if lbw_version[1] == 0:
-            if lbw_version[2] <= 33:
-                use_1033 = True
-
     # read matids and materialnames and create and add materials to the laubwerktree
     materials = []
     i = 0
     for matIdx in zip(lbw_mesh.mat_idxs):
         lbw_mat_idx = matIdx[0]
-        lbw_mat = lbw_model.materials[lbw_mat_idx]
-        mat_name = lbw_mat.name
-        proxy_color = None
-
-        if proxy:
-            if lbw_mat_idx == -1:
-                mat_name = foliage_mat_name
-                proxy_color = foliage_color
-            else:
-                mat_name = wood_mat_name
-                proxy_color = wood_color
+        lbw_mat = lbw_materials[lbw_mat_idx]
 
         if lbw_mat_idx not in materials:
             materials.append(lbw_mat_idx)
-            mat = bpy.data.materials.get(mat_name)
+            mat = bpy.data.materials.get(lbw_mat.name)
             if mat is None:
-                if use_1033:
-                    mat = lbw_to_bl_mat_1033(lbw_model, lbw_mat_idx, mat_name, season, proxy_color)
-                else:
-                    mat = lbw_to_bl_mat(lbw_model, lbw_mat_idx, mat_name, season, proxy_color)
+                mat = lbw_to_bl_mat(lbw_mat, material_quality)
             obj.data.materials.append(mat)
 
-        mat_index = obj.data.materials.find(mat_name)
+        mat_index = obj.data.materials.find(lbw_mat.name)
         if mat_index != -1:
             obj.data.polygons[i].material_index = mat_index
         else:
-            logger.warning("Material not found: %s" % mat_name)
+            logger.warning("Material not found: %s" % lbw_mat.name)
 
         i += 1
 
     return obj
-
-
-def lbw_to_bl_mat_1033(model, mat_idx, mat_name, season=None, proxy_color=None):
-    logger.warning("Laubwerk 1.0.33 support is deprecated and will be removed "
-                   "in future releases. Please upgrade to 1.0.34 or newer.")
-
-    global NW, NH
-
-    lbw_mat = model.materials[mat_idx]
-    mat = bpy.data.materials.new(mat_name)
-
-    mat.use_nodes = True
-    nodes = mat.node_tree.nodes
-    nodes.clear()
-    # create Principled BSDF node (primary multi-layer mixer node)
-    node_dif = nodes.new(type='ShaderNodeBsdfPrincipled')
-    node_dif.location = 2 * NW, 2 * NH
-    # create output node
-    node_out = nodes.new(type='ShaderNodeOutputMaterial')
-    node_out.location = 3 * NW, 2 * NH
-    # link nodes
-    links = mat.node_tree.links
-    links.new(node_dif.outputs[0], node_out.inputs[0])
-
-    mat.diffuse_color = proxy_color or lbw_mat.get_front().diffuse_color + (1.0,)
-    node_dif.inputs[0].default_value = mat.diffuse_color
-    if proxy_color:
-        return mat
-
-    # Diffuse Texture
-    logger.debug("Diffuse Texture: %s" % lbw_mat.get_front().diffuse_texture)
-    diffuse_path = lbw_mat.get_front().diffuse_texture
-    node_img = nodes.new(type='ShaderNodeTexImage')
-    node_img.location = 0, 2 * NH
-    node_img.image = bpy.data.images.load(diffuse_path)
-    links.new(node_img.outputs[0], node_dif.inputs[0])
-
-    # Handle Two-Sided Textures (diffuse texture only)
-    if lbw_mat.is_two_sided() and lbw_mat.sides_are_different():
-        logger.debug("Diffuse texture is two sided")
-        diffuse_back_path = lbw_mat.get_back().diffuse_texture
-        node_back_img = nodes.new(type='ShaderNodeTexImage')
-        node_back_img.location = -NW, 2 * NH
-        node_back_img.image = bpy.data.images.load(diffuse_back_path)
-        node_mix = nodes.new(type='ShaderNodeMixRGB')
-        node_mix.location = NW, 2 * NH
-        node_geometry = nodes.new(type='ShaderNodeNewGeometry')
-        node_geometry.location = -NW, NH
-        links.new(node_geometry.outputs[6], node_mix.inputs[0])
-        links.new(node_img.outputs[0], node_mix.inputs[1])
-        links.new(node_back_img.outputs[0], node_mix.inputs[2])
-        links.new(node_mix.outputs[0], node_dif.inputs[0])
-
-    # Alpha Texture
-    # Blender render engines support using the diffuse map alpha channel. We
-    # assume this rather than a separate alpha image.
-    alpha_path = lbw_mat.alpha_texture
-    logger.debug("Alpha Texture: %s" % lbw_mat.alpha_texture)
-    if alpha_path != "":
-        # Enable leaf clipping in Eevee
-        mat.blend_method = 'CLIP'
-        # TODO: mat.transparent_shadow_method = 'CLIP' ?
-
-        # All tested models either use the diffuse map for alpha or list a
-        # different texture for alpha in error (wrong diffuse map as opposed a
-        # separate alpha map). Ignore the difference if it exists, assume alpha
-        # comes from diffuse, and issue a warning when the difference appears.
-        links.new(node_img.outputs['Alpha'], node_dif.inputs['Alpha'])
-        if alpha_path != diffuse_path:
-            # NOTE: This affects at least 'Howea forsteriana'
-            logger.warning("Alpha Texture differs from diffuse image path:")
-            logger.warning("Alpha Texture: %s" % lbw_mat.alpha_texture)
-            logger.warning("Diffuse Texture: %s" % lbw_mat.get_front().diffuse_texture)
-
-    # Subsurface Texture
-    sub_path = lbw_mat.subsurface_texture
-    if sub_path != "":
-        logger.debug("Subsurface Texture: %s" % lbw_mat.subsurface_texture)
-        node_sub = nodes.new(type='ShaderNodeTexImage')
-        node_sub.location = 0, NH
-        node_sub.image = bpy.data.images.load(sub_path)
-
-        # Laubwerk models only support subsurface as a translucency effect for
-        # thin-shell material, indicated by having two sides:
-        if lbw_mat.is_two_sided():
-            node_sub.image.colorspace_settings.is_data = True
-            links.new(node_sub.outputs['Color'], node_dif.inputs['Transmission'])
-        else:
-            logger.warning("Subsurface Depth > 0. Not supported.")
-
-    # Index of Refraction (IOR)
-    # All Laubwerk Materials default to 1.33 across host applications
-    node_dif.inputs['IOR'].default_value = 1.33
-
-    # Bump Texture
-    bump_path = lbw_mat.get_front().bump_texture
-    if bump_path != "":
-        logger.debug("Bump Texture: %s" % lbw_mat.get_front().bump_texture)
-        node_bumpimg = nodes.new(type='ShaderNodeTexImage')
-        node_bumpimg.location = 0, 0
-        node_bumpimg.image = bpy.data.images.load(bump_path)
-        node_bumpimg.image.colorspace_settings.is_data = True
-        node_bump = nodes.new(type='ShaderNodeBump')
-        node_bump.location = NW, 0
-        # TODO: Make the Distance configurable to tune for each render engine
-        logger.debug("Bump Strength: %f" % lbw_mat.get_front().bump_strength)
-        node_bump.inputs['Strength'].default_value = lbw_mat.get_front().bump_strength
-        node_bump.inputs['Distance'].default_value = 0.02
-        links.new(node_bumpimg.outputs['Color'], node_bump.inputs['Height'])
-        links.new(node_bump.outputs['Normal'], node_dif.inputs['Normal'])
-
-    if lbw_mat.displacement_texture:
-        logger.debug("Displacement Texture: %s" % lbw_mat.displacement_texture)
-    if lbw_mat.get_front().normal_texture:
-        logger.debug("Normal Texture: %s" % lbw_mat.get_front().normal_texture)
-    if lbw_mat.get_front().specular_texture:
-        logger.debug("Specular Texture: %s" % lbw_mat.get_front().specular_texture)
-
-    return mat
 
 
 def lbw_side_to_bsdf(mat, side, x=0, y=0):
@@ -260,12 +113,15 @@ def lbw_side_to_bsdf(mat, side, x=0, y=0):
     node_bsdf.inputs['IOR'].default_value = 1.33
 
     # Diffuse Texture
-    logger.debug("Diffuse Texture: %s" % side.base_color_texture)
-    base_path = side.base_color_texture
-    node_img = nodes.new(type='ShaderNodeTexImage')
-    node_img.location = x, y + NH
-    node_img.image = bpy.data.images.load(base_path)
-    links.new(node_img.outputs[0], node_bsdf.inputs[0])
+    if side.base_color_texture:
+        logger.debug("Diffuse Texture: %s" % side.base_color_texture)
+        base_path = side.base_color_texture
+        node_img = nodes.new(type='ShaderNodeTexImage')
+        node_img.location = x, y + NH
+        node_img.image = bpy.data.images.load(base_path)
+        links.new(node_img.outputs[0], node_bsdf.inputs[0])
+    else:
+        node_bsdf.inputs[0].default_value = side.base_color + (1.0,)
 
     # Bump Texture
     bump_path = side.bump_texture
@@ -301,17 +157,19 @@ def lbw_side_to_bsdf(mat, side, x=0, y=0):
     return node_bsdf
 
 
-def lbw_to_bl_mat(model, mat_idx, mat_name, season=None, proxy_color=None):
+def lbw_to_bl_mat(lbw_mat, material_quality):
+    """Convert Laubwerk Material to Blender material"""
     global NW, NH
 
-    lbw_mat = model.materials[mat_idx]
-    mat = bpy.data.materials.new(mat_name)
-
-    if proxy_color:
-        mat.diffuse_color = proxy_color
-        return mat
+    mat = bpy.data.materials.new(lbw_mat.name)
 
     mat.diffuse_color = lbw_mat.get_front().base_color + (1.0,)
+
+    # Low quality materials only get a diffuse color and nothing else, so we
+    # can exit early
+    if material_quality == MATERIAL_QUALITY_LOW:
+        return mat
+
     mat.use_nodes = True
 
     nodes = mat.node_tree.nodes
@@ -429,16 +287,16 @@ def lbw_to_bl_mat(model, mat_idx, mat_name, season=None, proxy_color=None):
     return mat
 
 
-def import_lbw(filepath, variant, viewport_lod, render_lod, mesh_args, obj_viewport=None, obj_render=None):
+def import_lbw(filepath, viewport_lod, render_lod, mesh_args, obj_viewport=None, obj_render=None):
     time_main = time.time()
     lbw_model = laubwerk.load(filepath)
     # TODO: This should be debug, but we cannot silence the SDK [debug] message
     # which appear without context without this appearing in the log first
     logger.info('Importing "%s"' % lbw_model.name)
-    lbw_variant = next((v for v in lbw_model.variants if v.name == variant), lbw_model.default_variant)
-    if not lbw_variant.name == variant:
+    lbw_variant = next((v for v in lbw_model.variants if v.name == mesh_args["variant"]), lbw_model.default_variant)
+    if not lbw_variant.name == mesh_args["variant"]:
         logger.warning("Variant '%s' not found for '%s', using default variant '%s'" %
-                       (variant, lbw_model.name, lbw_variant.name))
+                       (mesh_args["variant"], lbw_model.name, lbw_variant.name))
 
     # Create the viewport object (low detail)
     time_local = time.time()
@@ -448,8 +306,10 @@ def import_lbw(filepath, variant, viewport_lod, render_lod, mesh_args, obj_viewp
             obj_viewport.data.name = lbw_model.name
             logger.debug("Reusing existing viewport object")
         elif viewport_lod == 'PROXY':
-            lbw_mesh = lbw_variant.get_proxy()
-            obj_viewport = lbw_to_bl_obj(lbw_model, None, lbw_mesh, mesh_args["season"], True)
+            lbw_mesh, lbw_materials = lbw_model.get_proxy({"variant": mesh_args["variant"],
+                                                           "season": mesh_args["season"]},
+                                                          True)
+            obj_viewport = lbw_to_bl_obj(lbw_materials, lbw_model.name, lbw_mesh, MATERIAL_QUALITY_LOW)
             logger.debug("Generated proxy viewport object in %.4fs" % (time.time() - time_local))
         elif viewport_lod == 'LOW':
             vp_mesh_args = mesh_args.copy()
@@ -466,7 +326,7 @@ def import_lbw(filepath, variant, viewport_lod, render_lod, mesh_args, obj_viewp
             vp_mesh_args["qualifier"] = mesh_args["season"]  # FIXME: qualifier still used in Laubwerk API
             lbw_mesh = lbw_variant.get_mesh(**vp_mesh_args)
             del vp_mesh_args["qualifier"]
-            obj_viewport = lbw_to_bl_obj(lbw_model, None, lbw_mesh, mesh_args["season"], False)
+            obj_viewport = lbw_to_bl_obj(lbw_model.materials, lbw_model.name, lbw_mesh, MATERIAL_QUALITY_HIGH)
             logger.debug("Generated low resolution viewport object in %.4fs" % (time.time() - time_local))
         else:
             logger.warning("Unknown viewport_lod: %s" % viewport_lod)
@@ -478,15 +338,17 @@ def import_lbw(filepath, variant, viewport_lod, render_lod, mesh_args, obj_viewp
         obj_render.data.name = lbw_model.name + " (render)"
         logger.debug("Reusing existing render object")
     elif render_lod == 'PROXY':
-        lbw_mesh = lbw_variant.get_proxy()
-        obj_render = lbw_to_bl_obj(lbw_model, " (render)", lbw_mesh, mesh_args["season"], True)
+        lbw_mesh, lbw_materials = lbw_model.get_proxy({"variant": mesh_args["variant"],
+                                                       "season": mesh_args["season"]},
+                                                      True)
+        obj_render = lbw_to_bl_obj(lbw_materials, lbw_model.name + " (render)", lbw_mesh, MATERIAL_QUALITY_LOW)
         logger.debug("Generated proxy render object in %.4fs" % (time.time() - time_local))
     elif render_lod == 'FULL':
         logger.debug("render get_mesh(%s)" % str(mesh_args))
         mesh_args["qualifier"] = mesh_args["season"]  # FIXME: qualifier still used in Laubwerk API
         lbw_mesh = lbw_variant.get_mesh(**mesh_args)
         del mesh_args["qualifier"]
-        obj_render = lbw_to_bl_obj(lbw_model, " (render)", lbw_mesh, mesh_args["season"], False)
+        obj_render = lbw_to_bl_obj(lbw_model.materials, lbw_model.name + " (render)", lbw_mesh, MATERIAL_QUALITY_HIGH)
         logger.debug("Generated high resolution render object in %.4fs" % (time.time() - time_local))
     else:
         logger.warning("Unknown render_lod: %s" % render_lod)
