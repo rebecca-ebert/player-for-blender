@@ -47,51 +47,51 @@ def md5sum(filename):
     return md5.hexdigest()
 
 
-class DBQualifier:
+class DBSeason:
     def __init__(self, db, name):
         self.name = name
         self.label = db.get_label(name)
 
 
-class DBModel:
-    def __init__(self, db, name, m_rec, plant_preview):
+class DBVariant:
+    def __init__(self, db, name, v_rec, model_preview):
         self.name = name
         self.label = db.get_label(self.name)
-        self.qualifiers = [DBQualifier(db, q) for q in m_rec["qualifiers"]]
-        self._default_qualifier = DBQualifier(db, m_rec["default_qualifier"])
-        self.preview = m_rec["preview"]
+        self.seasons = [DBSeason(db, s) for s in v_rec["seasons"]]
+        self._default_season = DBSeason(db, v_rec["default_season"])
+        self.preview = v_rec["preview"]
         if self.preview == "":
-            self.preview = plant_preview
+            self.preview = model_preview
 
-    def get_qualifier(self, name=None):
-        """ Return the requested qualifier or the default qualifier if None or not found """
+    def get_season(self, name=None):
+        """ Return the requested season or the default season if None or not found """
         if name is not None:
-            for q in self.qualifiers:
-                if q.name == name:
-                    return q
-        return self._default_qualifier
+            for s in self.seasons:
+                if s.name == name:
+                    return s
+        return self._default_season
 
 
-class DBPlant:
+class DBModel:
     def __init__(self, db, name):
         self.name = name
-        p_rec = db._db["plants"][name]
-        self.md5 = p_rec["md5"]
-        self.filepath = p_rec["filepath"]
+        m_rec = db._db["models"][name]
+        self.md5 = m_rec["md5"]
+        self.filepath = m_rec["filepath"]
         self.label = db.get_label(self.name)
-        preview = p_rec["preview"]
-        self.models = [DBModel(db, m, p_rec["models"][m], preview) for m in p_rec["models"]]
-        def_m = p_rec["default_model"]
-        self._default_model = DBModel(db, def_m, p_rec["models"][def_m], preview)
+        preview = m_rec["preview"]
+        self.variants = [DBVariant(db, v, m_rec["variants"][v], preview) for v in m_rec["variants"]]
+        def_v = m_rec["default_variant"]
+        self._default_variant = DBVariant(db, def_v, m_rec["variants"][def_v], preview)
         self.preview = preview
 
-    def get_model(self, name=None):
-        """ Return the requested model or the default model if None or not found """
+    def get_variant(self, name=None):
+        """ Return the requested variant or the default variant if None or not found """
         if name is not None:
-            for m in self.models:
-                if m.name == name:
-                    return m
-        return self._default_model
+            for v in self.variants:
+                if v.name == name:
+                    return v
+        return self._default_variant
 
 
 class DBIter:
@@ -99,9 +99,9 @@ class DBIter:
         self._items = []
         self._index = 0
 
-        for name in db._db["plants"]:
-            self._items.append(DBPlant(db, name))
-        self._items.sort(key=lambda plant: plant.name)
+        for name in db._db["models"]:
+            self._items.append(DBModel(db, name))
+        self._items.sort(key=lambda model: model.name)
 
     def __next__(self):
         if self._index < len(self._items):
@@ -146,7 +146,7 @@ class ThicketDB:
         self._db = {}
         self._db["info"] = {}
         self._db["labels"] = {}
-        self._db["plants"] = {}
+        self._db["models"] = {}
 
         self._db["info"]["sdk_version"] = lbw.version
         self._db["info"]["sdk_major"] = lbw.version_info.major
@@ -164,7 +164,7 @@ class ThicketDB:
         print("\tmajor: %s" % info["sdk_major"])
         print("\tminor: %s" % info["sdk_minor"])
         print("\tmicro: %s" % info["sdk_micro"])
-        print("Loaded %d plants:" % self.plant_count())
+        print("Loaded %d models:" % self.model_count())
 
     def update_labels(self, labels):
         self._db["labels"].update(labels)
@@ -184,35 +184,35 @@ class ThicketDB:
         except KeyError:
             return key
 
-    def get_plant(self, filepath=None, name=None):
+    def get_model(self, filepath=None, name=None):
         if name:
-            if name not in self._db["plants"]:
+            if name not in self._db["models"]:
                 name = None
 
         if name is None and filepath:
-            for n in self._db["plants"]:
-                if self._db["plants"][n]["filepath"] == filepath:
+            for n in self._db["models"]:
+                if self._db["models"][n]["filepath"] == filepath:
                     name = n
 
         if name:
-            return DBPlant(self, name)
+            return DBModel(self, name)
 
         return None
 
-    def add_plant(self, filepath):
-        p_rec = ThicketDB.parse_plant(filepath)
-        self._db["plants"][p_rec["name"]] = p_rec["plant"]
-        self.update_labels(p_rec["labels"])
+    def add_model(self, filepath):
+        m_rec = ThicketDB.parse_model(filepath)
+        self._db["models"][m_rec["name"]] = m_rec["model"]
+        self.update_labels(m_rec["labels"])
 
-    def plant_count(self):
-        return len(self._db["plants"])
+    def model_count(self):
+        return len(self._db["models"])
 
-    def build(self, plants_dir, sdk_path):
+    def build(self, models_dir, sdk_path):
         self.initialize()
 
         # FIXME: .gz is optional
-        plant_files = glob.glob(plants_dir + "/*/*.lbw.gz")
-        num_plants = len(plant_files)
+        model_files = glob.glob(models_dir + "/*/*.lbw.gz")
+        num_models = len(model_files)
 
         num_jobs = os.cpu_count()
         if not num_jobs:
@@ -220,13 +220,13 @@ class ThicketDB:
         jobs = deque()
 
         log_level = logging.getLevelName(logger.level)
-        logger.info("Parsing %d plants using %d parallel jobs" % (num_plants, num_jobs))
-        while len(plant_files) > 0 or len(jobs) > 0:
+        logger.info("Parsing %d models using %d parallel jobs" % (num_models, num_jobs))
+        while len(model_files) > 0 or len(jobs) > 0:
             # Keep up to num_jobs jobs running
-            while len(jobs) < num_jobs and len(plant_files) > 0:
-                f = plant_files.pop()
+            while len(jobs) < num_jobs and len(model_files) > 0:
+                f = model_files.pop()
                 logger.debug("Parsing: %s" % f)
-                job = Popen([self.python, __file__, "-f", f, "-s", sdk_path, "-l", log_level, "parse_plant"],
+                job = Popen([self.python, __file__, "-f", f, "-s", sdk_path, "-l", log_level, "parse_model"],
                             stdout=PIPE)
                 jobs.append(job)
 
@@ -234,96 +234,107 @@ class ThicketDB:
             job = jobs.popleft()
             outs, errs = job.communicate()
             try:
-                p_rec = json.loads(outs)
-                self._db["plants"][p_rec["plant"]["name"]] = p_rec["plant"]
-                self.update_labels(p_rec["labels"])
-                logger.info('Added "%s"' % p_rec["plant"]["name"])
+                m_rec = json.loads(outs)
+                self._db["models"][m_rec["model"]["name"]] = m_rec["model"]
+                self.update_labels(m_rec["labels"])
+                logger.info('Added "%s"' % m_rec["model"]["name"])
             except json.decoder.JSONDecodeError as e:
                 logger.error("JSONDecodeError while parsing %s: %s" % (f, e))
 
-        if len(plant_files) > 0:
-            logger.error("Exited worker loop with %d plant files remaining" % len(plant_files))
+        if len(model_files) > 0:
+            logger.error("Exited worker loop with %d model files remaining" % len(model_files))
 
         if len(jobs) > 0:
             logger.error("Exited worker loop with %d jobs still running" % len(jobs))
 
         self.save()
-        logger.info("Processed %d/%d plants" % (self.plant_count(), num_plants))
+        logger.info("Processed %d/%d models" % (self.model_count(), num_models))
 
     def read(self):
         self.print_info()
 
-        for plant in self:
-            print("%s (%s)" % (plant.name, plant.label))
-            print("\tfile: %s" % plant.filepath)
-            print("\tmd5: %s" % plant.md5)
-            m = plant.get_model()
-            print("\tdefault_model: %s (%s)" % (m.name, m.label))
-            print("\tmodels:")
-            for m in plant.models:
-                print("\t\t%s (%s) %s" % (m.name, m.get_qualifier().label,
-                                          [q.name for q in m.qualifiers]))
+        for model in self:
+            print("%s (%s)" % (model.name, model.label))
+            print("\tfile: %s" % model.filepath)
+            print("\tmd5: %s" % model.md5)
+            v = model.get_variant()
+            print("\tdefault_variant: %s (%s)" % (v.name, v.label))
+            print("\tvariants:")
+            for v in model.variants:
+                print("\t\t%s (%s) %s" % (v.name, v.get_season().label,
+                                          [s.name for s in v.seasons]))
 
     # Class methods
-    def parse_plant(filepath):
-        p = lbw.load(filepath)
-        p_rec = {}
+    def parse_model(filepath):
+        m = lbw.load(filepath)
+        m_rec = {}
 
-        plant = {}
-        plant["name"] = p.name
-        plant["filepath"] = filepath
-        plant["md5"] = md5sum(filepath)
-        plant["default_model"] = p.default_model.name
-        preview_stem = p.name.replace(" ", "_").replace(".", "")
+        model = {}
+        model["name"] = m.name
+        model["filepath"] = filepath
+        model["md5"] = md5sum(filepath)
+        params_variant = next(x for x in m.params if x['name'] == "variant")['enum']
+        default_variant_idx = params_variant["default"]
+        model["default_variant"] = params_variant["options"][default_variant_idx]["name"]
+        preview_stem = Path(filepath).stem
         preview_path = Path(filepath).parent.absolute() / (preview_stem + ".png")
         if not preview_path.is_file():
-            logger.warning("Preview not found: %s" % preview_path)
-            preview_path = ""
-        plant["preview"] = str(preview_path)
-
-        labels = {}
-        p_labels = {}
-        # Store only the first label per locale
-        for label in p.labels.items():
-            p_labels[label[0]] = label[1][0]
-        labels[p.name] = p_labels
-
-        models = {}
-        i = 0
-        for m in p.models:
-            m_rec = {}
-            seasons = []
-            q_labels = {}
-            for q in m.qualifiers:
-                seasons.append(q)
-                q_labels[q] = {}
-                for q_lang in m.qualifier_labels[q].items():
-                    q_labels[q][q_lang[0]] = q_lang[1][0]
-            labels.update(q_labels)
-            m_rec["index"] = i
-            m_rec["qualifiers"] = seasons
-            m_rec["default_qualifier"] = m.default_qualifier
-            preview_path = Path(filepath).parent.absolute() / "models" / (preview_stem + "_" + m.name + ".png")
+            preview_stem = os.path.splitext(preview_stem)[0]
+            preview_path = Path(filepath).parent.absolute() / (preview_stem + ".png")
             if not preview_path.is_file():
                 logger.warning("Preview not found: %s" % preview_path)
                 preview_path = ""
-            m_rec["preview"] = str(preview_path)
-            models[m.name] = m_rec
-            m_labels = {}
-            # FIXME: highly redundant
-            for label in m.labels.items():
-                m_labels[label[0]] = label[1][0]
-            labels[m.name] = m_labels
+        model["preview"] = str(preview_path)
+
+        labels = {}
+        m_labels = {}
+        # Store only the first label per locale
+        for label in m.plant_meta['labels']:
+            if not label['lang'] in m_labels:
+                m_labels[label['lang']] = label['text']
+
+        labels[m.name] = m_labels
+
+        variants = {}
+        i = 0
+        seasons = []
+        s_labels = {}
+        params_season = next(x for x in m.params if x['name'] == "season")['enum']
+        for s in params_season['options']:
+            seasons.append(s['name'])
+            s_labels[s['name']] = {}
+            for s_lang in s['labels']:
+                s_labels[s['name']][s_lang['lang']] = s_lang['text']
+        default_season = params_season['default']
+
+        for v in m.variants:
+            v_rec = {}
+            labels.update(s_labels)
+            v_rec["index"] = i
+            v_rec["seasons"] = seasons
+            v_rec["default_season"] = seasons[default_season]
+            preview_path = Path(filepath).parent.absolute() / "models" / (preview_stem + "_" + v.name + ".png")
+            if not preview_path.is_file():
+                logger.warning("Preview not found: %s" % preview_path)
+                preview_path = ""
+            v_rec["preview"] = str(preview_path)
+            variants[v.name] = v_rec
+            v_labels = {}
+
+            for label in next(x for x in params_variant['options'] if x['name'] == v.name)['labels']:
+                v_labels[label['lang']] = label['text']
+            labels[v.name] = v_labels
+
             i = i + 1
-        plant["models"] = models
+        model["variants"] = variants
 
-        p_rec["plant"] = plant
-        p_rec["labels"] = labels
-        return p_rec
+        m_rec["model"] = model
+        m_rec["labels"] = labels
+        return m_rec
 
-    def parse_plant_json(filepath):
-        p_rec = ThicketDB.parse_plant(filepath)
-        print(json.dumps(p_rec))
+    def parse_model_json(filepath):
+        m_rec = ThicketDB.parse_model(filepath)
+        print(json.dumps(m_rec))
 
 
 def main():
@@ -333,16 +344,16 @@ def main():
 Thicket Database Tool
 Commands:
   read                read and print the db contents (requires -d)
-  build               scan plants path and add all plants to a new db (requires -d -p -s)
-  parse_plant         read a plant file and print the plant record json (requires -f -s)
+  build               scan models path and add all models to a new db (requires -d -p -s)
+  parse_model         read a model file and print the model record json (requires -f -s)
 '''))
 
-    argParse.add_argument("cmd", choices=["read", "build", "parse_plant"])
+    argParse.add_argument("cmd", choices=["read", "build", "parse_model"])
     argParse.add_argument("-d", help="database filename")
-    argParse.add_argument("-f", help="Laubwerk Plant filename (lbw.gz)")
+    argParse.add_argument("-f", help="Laubwerk Model filename (lbw.gz)")
     argParse.add_argument("-l", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
                           default="INFO", help="logger level")
-    argParse.add_argument("-p", help="Laubwerk Plants path")
+    argParse.add_argument("-p", help="Laubwerk Models path")
     argParse.add_argument("-s", help="Laubwerk Python SDK path")
 
     args = argParse.parse_args()
@@ -352,7 +363,7 @@ Commands:
 
     if args.s:
         # If the SDK path was specified, attempt to import the Laubwerk SDK The
-        # build and parse_plant commands require the Laubwerk SDK which may or
+        # build and parse_model commands require the Laubwerk SDK which may or
         # may not be in the sys.path depending on the OS, environment, and how
         # it was called (from Blender, as a subprocess, or via the command
         # line).
@@ -367,8 +378,8 @@ Commands:
     elif cmd == "build" and args.d and args.p and lbw:
         db = ThicketDB(args.d, create=True)
         db.build(args.p, args.s)
-    elif cmd == "parse_plant" and args.f and lbw:
-        ThicketDB.parse_plant_json(args.f)
+    elif cmd == "parse_model" and args.f and lbw:
+        ThicketDB.parse_model_json(args.f)
     else:
         argParse.print_help()
         return 1

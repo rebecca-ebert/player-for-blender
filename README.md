@@ -28,8 +28,8 @@ Thicket provides a visual plant selection gallery and options to configure the p
 
 ## Install
 * Download and install the prerequisites
-  * [Blender](http://www.blender.org/) 2.80 ~~or later~~ through 3.0.1. Laubwerk 1.0.43 supports up to Python 3.9, Blender 3.1 switched to Python 3.10. Until Laubwerk adds Python 3.10 support, Blender 3.0.1 is the latest version Thicket can support.
-  * Laubwerk Python SDK 1.0.33 or later, provided by all Laubwerk Plant Kits, including the [Plants Kit Freebie](http://www.laubwerk.com/store/plants-kit-freebie).
+  * [Blender](http://www.blender.org/) 2.80 or later
+  * Laubwerk Python SDK 1.0.49 or later, provided by all Laubwerk Plant Kits, including the [Plants Kit Freebie](http://www.laubwerk.com/store/plants-kit-freebie).
     * Choose the "Custom" installation method and ensure the "Python Extension" component is checked.
 * Installation options
   * From a release Zip file (most users)
